@@ -16,7 +16,6 @@ import {
 import {
   fetchImageAsBase64,
   generateContent,
-  getCachedResponse,
   getCurrentWeekOfTheYear,
   getRandomUserAgent,
   setCachedResponse,
@@ -34,16 +33,11 @@ export const processWatchTower = async () => {
       focus: string;
     };
 
-    const scrapCacheKey = `data-${year}-${week}`;
-    processedData = await getCachedResponse(scrapCacheKey);
-    if (!processedData) {
-      const articleUrl = await fetchMeetingWeekData(year, week);
-      const $ = await fetchArticleData(articleUrl);
-      const { title, theme, focus } = extractArticleDetails($);
-      const questionList = await extractQuestionsAndAnswers($);
-      processedData = { questionList, articleUrl, title, theme, focus };
-      await setCachedResponse(scrapCacheKey, processedData);
-    }
+    const articleUrl = await fetchMeetingWeekData(year, week);
+    const $ = await fetchArticleData(articleUrl);
+    const { title, theme, focus } = extractArticleDetails($);
+    const questionList = await extractQuestionsAndAnswers($);
+    processedData = { questionList, articleUrl, title, theme, focus };
 
     const initialHeader = `Title: ${processedData.title}\nTheme: ${processedData.theme}\nFocus: ${processedData.focus}`;
     const questionPromises = processedData.questionList.map(
@@ -160,178 +154,204 @@ const extractQuestionsAndAnswers = async (
     ],
   });
 
-  for (const question of questions.toArray()) {
-    const data = {
-      pnumbers: "",
-      paragraph: Array<ParagraphData>(),
-      scripture: Array<ParagraphScriptureData>(),
-      footnote: Array<ParagraphFootnoteData>(),
-      question: "",
-      image: "",
-      imageCaption: "",
-      additionalInfo: Array<ParagraphData>(),
-    };
-    let paragraphInput = Array<ParagraphData>();
-    let paragraphScriptureRefs = Array<ParagraphScriptureData>();
-    let paragraphFootnoteRefs = Array<ParagraphFootnoteData>();
-    let paragraphQuestions = "";
-    let paragraphAdditionalInfo = Array<ParagraphData>();
-    const paragraphNumbers: string[] = [];
-    const questionElement = $(question);
-    questionElement.find("strong").remove();
+  try {
+    const page = await browser.newPage();
+    page.setUserAgent(getRandomUserAgent());
+    page.setDefaultNavigationTimeout(60000); // 60 seconds
+    page.setDefaultTimeout(30000); // 30 seconds
 
-    const questionText = questionElement.text().trim();
-    const questionPid = questionElement.attr("data-pid");
-    const paragraphs = $(`p[data-rel-pid='[${questionPid}]']`);
+    for (const question of questions.toArray()) {
+      const data = {
+        pnumbers: "",
+        paragraph: Array<ParagraphData>(),
+        scripture: Array<ParagraphScriptureData>(),
+        footnote: Array<ParagraphFootnoteData>(),
+        question: "",
+        image: "",
+        imageCaption: "",
+        additionalInfo: Array<ParagraphData>(),
+        subheading: "",
+      };
+      let paragraphInput = Array<ParagraphData>();
+      let paragraphScriptureRefs = Array<ParagraphScriptureData>();
+      let paragraphFootnoteRefs = Array<ParagraphFootnoteData>();
+      let paragraphQuestions = "";
+      let paragraphAdditionalInfo = Array<ParagraphData>();
+      const paragraphNumbers: string[] = [];
+      const questionElement = $(question);
+      // Check if the is a <h2> before this question element.
+      const previousElement = questionElement.prev();
+      // log text if it is a <h2> element
+      if (previousElement.is("h2")) {
+        data.subheading = previousElement.text().trim();
+      }
+      questionElement.find("strong").remove();
 
-    // Look for text, (See also picture.) or (See also pictures.). If found, extract the picture from div with id f{imageIndex}
-    const pictureIndex = questionText.search(
-      /\(See also picture\.?\)|\(See also pictures\.?\)/,
-    );
-    if (pictureIndex !== -1) {
-      const pictureDiv = $(`div#f${imageIndex}`);
-      const pictureUrl = pictureDiv.find("img").attr("src");
-      data.image = `${WOL_ROOT_URL}${pictureUrl}`;
-      imageIndex++;
+      const questionText = questionElement.text().trim();
+      const questionPid = questionElement.attr("data-pid");
+      const paragraphs = $(`p[data-rel-pid='[${questionPid}]']`);
 
-      // get <figcaption> text
-      const pictureCaption = pictureDiv.find("figcaption").text().trim();
-      data.imageCaption = pictureCaption;
-    }
+      // Look for text, (See also picture.) or (See also pictures.). If found, extract the picture from div with id f{imageIndex}
+      const pictureIndex = questionText.search(
+        /\(See also picture\.?\)|\(See also pictures\.?\)/,
+      );
+      if (pictureIndex !== -1) {
+        const pictureDiv = $(`div#f${imageIndex}`);
+        const pictureUrl = pictureDiv.find("img").attr("src");
+        data.image = `${WOL_ROOT_URL}${pictureUrl}`;
+        imageIndex++;
 
-    // in a question, there maybe <a> tags with class="it" that contains additional information
-    // get the href and use puppeteer to extract the content
+        // get <figcaption> text
+        const pictureCaption = pictureDiv.find("figcaption").text().trim();
+        data.imageCaption = pictureCaption;
+      }
 
-    const additionalInfo = questionElement.find("a.it");
-    if (additionalInfo.length) {
-      for (const info of additionalInfo.toArray()) {
-        const infoUrl = $(info).attr("href");
-        if (infoUrl) {
-          const infoPage = await browser.newPage();
-          await infoPage.setUserAgent(getRandomUserAgent());
-          await infoPage.setViewport({ width: 1920, height: 1080 });
-          await infoPage.goto(WOL_ROOT_URL + infoUrl);
-          const infoData = await infoPage.content();
-          const info$ = cheerio.load(infoData);
-          const informationElement = info$(
-            "p.jwac-textHighlight, span.jwac-textHighlight, div.jwac-textHighlight",
-          );
-          let additionalInfoText = "";
-          if (informationElement.length) {
-            for (const info of informationElement.toArray()) {
-              additionalInfoText += $(info).text().trim() + "\n";
+      // in a question, there maybe <a> tags with class="it" that contains additional information
+      // get the href and use puppeteer to extract the content
+
+      const additionalInfo = questionElement.find("a.it");
+      if (additionalInfo.length) {
+        for (const info of additionalInfo.toArray()) {
+          const infoUrl = $(info).attr("href");
+          if (infoUrl) {
+            try {
+              await page.goto(WOL_ROOT_URL + infoUrl);
+              const infoData = await page.content();
+              const info$ = cheerio.load(infoData);
+              const informationElement = info$(
+                "p.jwac-textHighlight, span.jwac-textHighlight, div.jwac-textHighlight",
+              );
+              let additionalInfoText = "";
+              if (informationElement.length) {
+                for (const info of informationElement.toArray()) {
+                  additionalInfoText += $(info).text().trim() + "\n";
+                }
+              }
+              paragraphAdditionalInfo.push({
+                pnumber: paragraphNumber,
+                content: additionalInfoText,
+              });
+            } catch (error) {
+              console.error(
+                `Error fetching additional info from ${infoUrl}:`,
+                error,
+              );
             }
           }
-          paragraphAdditionalInfo.push({
-            pnumber: paragraphNumber,
-            content: additionalInfoText,
-          });
         }
       }
-    }
 
-    if (paragraphs.length) {
-      for (const paragraph of paragraphs.toArray()) {
-        const paragraphElement = $(paragraph);
-        const paragraphText = paragraphElement.text().trim();
-        let paragraphScriptureReferences: {
-          scripture: string;
-          content: string;
-        }[] = [];
-        let paragraphFootnoteReferences: {
-          footnote: string;
-          content: string;
-        }[] = [];
+      if (paragraphs.length) {
+        for (const paragraph of paragraphs.toArray()) {
+          const paragraphElement = $(paragraph);
+          const paragraphText = paragraphElement.text().trim();
+          let paragraphScriptureReferences: {
+            scripture: string;
+            content: string;
+          }[] = [];
+          let paragraphFootnoteReferences: {
+            footnote: string;
+            content: string;
+          }[] = [];
 
-        // Look out for <a> tags that has data-bid attribute
-        // These are scripture references that need to be extracted
-        const scriptureReferences = paragraphElement.find("a[data-bid]");
-        // get the href attribute of the <a> tag
-        if (scriptureReferences.length) {
-          for (const scriptureReference of scriptureReferences.toArray()) {
-            const scriptureUrl = $(scriptureReference).attr("href");
-            const scriptureText = $(scriptureReference).text().trim();
-            if (scriptureUrl) {
-              const page = await browser.newPage();
-              await page.setUserAgent(getRandomUserAgent());
-              await page.setViewport({ width: 1920, height: 1080 });
-              await page.goto(WOL_ROOT_URL + scriptureUrl);
-              const scriptureData = await page.content();
-              const scripture$ = cheerio.load(scriptureData);
-              // find p or span with class="jwac-textHighlight"
-              const verseElement = scripture$(
-                "p.jwac-textHighlight, span.jwac-textHighlight",
-              );
-              if (verseElement.length) {
-                // remove class with vl or cl
-                verseElement.find("a.vl, a.cl").remove();
-                const verseText = verseElement.text().trim();
+          // Look out for <a> tags that has data-bid attribute
+          // These are scripture references that need to be extracted
+          const scriptureReferences = paragraphElement.find("a[data-bid]");
+          // get the href attribute of the <a> tag
+          if (scriptureReferences.length) {
+            for (const scriptureReference of scriptureReferences.toArray()) {
+              const scriptureUrl = $(scriptureReference).attr("href");
+              const scriptureText = $(scriptureReference).text().trim();
+              if (scriptureUrl) {
+                try {
+                  await page.goto(WOL_ROOT_URL + scriptureUrl);
+                  const scriptureData = await page.content();
+                  const scripture$ = cheerio.load(scriptureData);
+                  // find p or span with class="jwac-textHighlight"
+                  const verseElement = scripture$(
+                    "p.jwac-textHighlight, span.jwac-textHighlight",
+                  );
+                  if (verseElement.length) {
+                    // remove class with vl or cl
+                    verseElement.find("a.vl, a.cl").remove();
+                    const verseText = verseElement.text().trim();
 
-                // include scripture text in the paragraph text. Add quotes to the scripture text
-                paragraphScriptureReferences.push({
-                  scripture: scriptureText,
-                  content: verseText,
-                });
+                    // include scripture text in the paragraph text. Add quotes to the scripture text
+                    paragraphScriptureReferences.push({
+                      scripture: scriptureText,
+                      content: verseText,
+                    });
+                  }
+                } catch (error) {
+                  console.error(
+                    `Error fetching scripture from ${scriptureUrl}:`,
+                    error,
+                  );
+                }
               }
             }
           }
-        }
 
-        // sometimes paragraphs have footnote references. This can be found by looking for <a> with data-fnid attribute
-        // If there is a footnote, retrieve the corresponding footnote text that can be found using <div> with data-fnid attribute
-        // and class fn-ref
-        const footnoteReferences = $(paragraph).find("a[data-fnid]");
-        if (footnoteReferences.length) {
-          for (const footnoteReference of footnoteReferences.toArray()) {
-            const footnoteId = $(footnoteReference).attr("data-fnid");
-            // find the div and first <a> tag with class fn-symbol and remove it
-            const footnoteText = $(`div.fn-ref[data-fnid='${footnoteId}']`)
-              .find("a.fn-symbol")
-              .remove()
-              .end()
-              .text();
+          // sometimes paragraphs have footnote references. This can be found by looking for <a> with data-fnid attribute
+          // If there is a footnote, retrieve the corresponding footnote text that can be found using <div> with data-fnid attribute
+          // and class fn-ref
+          const footnoteReferences = $(paragraph).find("a[data-fnid]");
+          if (footnoteReferences.length) {
+            for (const footnoteReference of footnoteReferences.toArray()) {
+              const footnoteId = $(footnoteReference).attr("data-fnid");
+              // find the div and first <a> tag with class fn-symbol and remove it
+              const footnoteText = $(`div.fn-ref[data-fnid='${footnoteId}']`)
+                .find("a.fn-symbol")
+                .remove()
+                .end()
+                .text();
 
-            paragraphFootnoteReferences.push({
-              footnote: footnoteId as string,
-              content: footnoteText,
+              paragraphFootnoteReferences.push({
+                footnote: footnoteId as string,
+                content: footnoteText,
+              });
+            }
+          }
+          paragraphInput.push({
+            pnumber: paragraphNumber,
+            content: paragraphText,
+          });
+          if (
+            paragraphScriptureReferences &&
+            paragraphScriptureReferences.length
+          ) {
+            paragraphScriptureRefs.push({
+              pnumber: paragraphNumber,
+              content: paragraphScriptureReferences,
             });
           }
-        }
-        paragraphInput.push({
-          pnumber: paragraphNumber,
-          content: paragraphText,
-        });
-        if (
-          paragraphScriptureReferences &&
-          paragraphScriptureReferences.length
-        ) {
-          paragraphScriptureRefs.push({
-            pnumber: paragraphNumber,
-            content: paragraphScriptureReferences,
-          });
+
+          if (
+            paragraphFootnoteReferences &&
+            paragraphFootnoteReferences.length
+          ) {
+            paragraphFootnoteRefs.push({
+              pnumber: paragraphNumber,
+              content: paragraphFootnoteReferences,
+            });
+          }
+          paragraphNumbers.push(paragraphNumber.toString());
+          paragraphNumber++;
         }
 
-        if (paragraphFootnoteReferences && paragraphFootnoteReferences.length) {
-          paragraphFootnoteRefs.push({
-            pnumber: paragraphNumber,
-            content: paragraphFootnoteReferences,
-          });
-        }
-        paragraphNumbers.push(paragraphNumber.toString());
-        paragraphNumber++;
+        paragraphQuestions = questionText;
       }
-
-      paragraphQuestions = questionText;
+      data.pnumbers = paragraphNumbers.join(", ");
+      data.paragraph = paragraphInput;
+      data.scripture = paragraphScriptureRefs;
+      data.footnote = paragraphFootnoteRefs;
+      data.question = paragraphQuestions;
+      data.additionalInfo = paragraphAdditionalInfo;
+      questionList.push(data);
     }
-    data.pnumbers = paragraphNumbers.join(", ");
-    data.paragraph = paragraphInput;
-    data.scripture = paragraphScriptureRefs;
-    data.footnote = paragraphFootnoteRefs;
-    data.question = paragraphQuestions;
-    data.additionalInfo = paragraphAdditionalInfo;
-    questionList.push(data);
+  } finally {
+    await browser.close();
   }
-  await browser.close();
   return questionList;
 };
 
@@ -379,6 +399,13 @@ const buildQuestionContent = (
 
   if (additionalInfoContent) {
     contentParts.push(additionalInfoContent);
+  }
+
+  const imageCaption = question.imageCaption;
+  if (imageCaption) {
+    contentParts.push(
+      `Paragraph [${question.pnumbers}] Image Caption: ${imageCaption}`,
+    );
   }
 
   if (!isSummary) {
@@ -432,6 +459,11 @@ const getAnswer = async (
           data: base64Image,
         },
       };
+      contentList.unshift({
+        type: "text",
+        text: `Image Caption: ${imageCaption}`,
+      } as TextBlockParam);
+
       contentList.unshift(imagePrompt as ImageBlockParam);
     }
     answer = (await generateContent(contentList, "answer")) || "No answer.";

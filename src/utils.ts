@@ -1,6 +1,5 @@
 import {
   ImageBlockParam,
-  MessageParam,
   TextBlock,
   TextBlockParam,
 } from "@anthropic-ai/sdk/resources";
@@ -40,8 +39,6 @@ export const generateContent = async (
       ? ANTHROPIC_SYS_INSTRUCTIONS_FOR_SUMMARY
       : ANTHROPIC_SYS_INSTRUCTIONS_FOR_ANSWER;
 
-  const prompt =
-    type === "summary" ? ANTHROPIC_SUMMARY_PROMPT : ANTHROPIC_QA_PROMPT;
   try {
     const message = await anthropic.messages.create({
       model: ANTHROPIC_MODEL,
@@ -105,7 +102,6 @@ export const getCachedResponse = async (
     const cachedResponse = await redis.get(cacheKey);
     if (cachedResponse) {
       console.log("Retrieved cached response for key:", cacheKey);
-      // await redis.del(cacheKey);
       return JSON.parse(decodeURIComponent(cachedResponse));
     }
   } catch (error) {

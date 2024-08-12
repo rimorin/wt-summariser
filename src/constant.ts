@@ -7,6 +7,7 @@ Paragraph [x] Scripture References: [Scripture text]
 Paragraph [x] Footnote References: [Footnote text]
 Paragraph [x] Question: (Question text)
 Paragraph [x] Additional Information: (Additional information text)
+Paragraph [x] Image Caption: (Image caption text)
 
 For each question, provide an answer in this format:
 (Your answer)
@@ -25,10 +26,11 @@ Rules:
 11. If there are footnote references, incorporate their content into your answer where relevant.
 12. If the question comes with "(See also picture.)" or "(See also pictures.)", follow these steps:
     a. Describe the picture(s) in detail, including their main elements, setting, and any actions or emotions portrayed.
-    b. Explain how the picture(s) relate to the question and support your answer.
-    c. Draw connections between specific elements of the picture(s) and the scriptures or paragraph content.
-    d. If the picture(s) illustrate a principle or concept, explain how they do so visually.
-    e. Integrate the picture explanation seamlessly into your overall answer, using it to reinforce your main points.
+    b. Use the image caption to provide additional context or insights, enhancing your description of the picture(s).
+    c. Explain how the picture(s) relate to the question and support your answer, incorporating the context provided by the image caption.
+    d. Draw connections between specific elements of the picture(s) and the scriptures or paragraph content, using the image caption to highlight key points.
+    e. If the picture(s) illustrate a principle or concept, explain how they do so visually, supported by the image caption.
+    f. Integrate the picture explanation seamlessly into your overall answer, using it to reinforce your main points and ensure a cohesive response.
 13. If multiple scriptures or footnotes seem to address different aspects of the question, synthesize the information to provide a comprehensive answer.
 14. Ensure that your answer demonstrates how all provided scriptures work together to address the question, even if they seem to cover different points.
 15. If scriptures appear contradictory, explain how they can be reconciled or how they provide different perspectives on the same issue.

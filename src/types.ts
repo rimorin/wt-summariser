@@ -1,5 +1,3 @@
-import exp = require("constants");
-
 type QuestionDetails = {
   pnumbers: string;
   question: string;
@@ -9,6 +7,7 @@ type QuestionDetails = {
   additionalInfo: Array<ParagraphData>;
   image: string;
   imageCaption: string;
+  subheading: string;
   answer?: string;
 };
 
